@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<title>Phòng AR — Thử nội thất bằng camera</title>
+<style>
+  :root{
+    --bg:#0e1116; --glass:rgba(16,19,24,.74); --line:rgba(255,255,255,.09);
+    --text:#eef1f5; --muted:#9aa4b2; --accent:#4da3ff; --accent-2:#7cc4ff;
+    --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  button:disabled{opacity:.35;cursor:default}
+
+  #video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:none;background:#000}
+  body.mode-camera #video{display:block}
+  #stage{position:fixed;inset:0}
+  #stage canvas{display:block;width:100%;height:100%;touch-action:none}
+
+  /* ---------- Start screen ---------- */
+  #start{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:center;
+    padding:calc(28px + var(--safe-t)) calc(22px + var(--safe-r)) calc(28px + var(--safe-b)) calc(22px + var(--safe-l));
+    background:
+      radial-gradient(120% 80% at 50% 0%,rgba(77,163,255,.18),transparent 60%),
+      linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px) 0 0/28px 28px,
+      linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) 0 0/28px 28px,
+      var(--bg);overflow:auto}
+  #start[hidden]{display:none}
+  .wrap{width:100%;max-width:420px;margin:0 auto}
+  .logo{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;
+    background:linear-gradient(145deg,#4da3ff,#2b6fd6);box-shadow:0 10px 30px rgba(77,163,255,.35);margin-bottom:18px}
+  h1{font-size:30px;line-height:1.1;margin:0 0 8px;letter-spacing:-.02em}
+  .lead{color:var(--muted);margin:0 0 26px}
+  .modes{display:grid;gap:10px}
+  .mode-btn{display:flex;align-items:center;gap:14px;text-align:left;width:100%;padding:15px 16px;border-radius:16px;
+    background:rgba(255,255,255,.04);border:1px solid var(--line);transition:transform .12s,background .2s}
+  .mode-btn:active{transform:scale(.98)}
+  .mode-btn .ic{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.06);font-size:20px}
+  .mode-btn b{display:block;font-size:16px}
+  .mode-btn small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+  .mode-btn .tag{margin-left:auto;flex:none;font-size:11px;font-weight:600;padding:4px 8px;border-radius:99px;background:rgba(255,255,255,.07);color:var(--muted)}
+  .mode-btn.rec{background:rgba(77,163,255,.12);border-color:rgba(77,163,255,.45)}
+  .mode-btn.rec .tag{background:var(--accent);color:#06121f}
+  .mode-btn.off{opacity:.45}
+  .status{margin-top:18px;font-size:13px;color:var(--muted);padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.03);border:1px dashed var(--line)}
+  .status b{color:var(--text);font-weight:600}
+
+  /* ---------- In-session overlay ---------- */
+  #overlay{position:fixed;inset:0;z-index:10;pointer-events:none;display:none;flex-direction:column;justify-content:space-between;
+    padding:calc(12px + var(--safe-t)) calc(12px + var(--safe-r)) calc(12px + var(--safe-b)) calc(12px + var(--safe-l))}
+  body.in-session #overlay{display:flex}
+  .glass{background:var(--glass);-webkit-backdrop-filter:blur(16px) saturate(1.3);backdrop-filter:blur(16px) saturate(1.3);
+    border:1px solid var(--line);border-radius:18px;pointer-events:auto}
+  .top{display:flex;align-items:center;gap:8px}
+  .icon-btn{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;flex:none}
+  .icon-btn svg{width:20px;height:20px}
+  .hint{flex:1;min-width:0;padding:11px 14px;border-radius:14px;font-size:14px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .count{flex:none;padding:0 12px;height:42px;display:grid;place-items:center;border-radius:14px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .panel{padding:10px;display:grid;gap:10px}
+  .row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:1px}
+  .row::-webkit-scrollbar{display:none}
+  .chip{flex:1 0 58px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px 8px;white-space:nowrap;border-radius:14px;
+    background:rgba(255,255,255,.05);border:1px solid transparent;font-size:12px;color:var(--muted);transition:background .15s}
+  .chip .e{font-size:24px;line-height:1}
+  .chip.on{background:rgba(77,163,255,.16);border-color:rgba(77,163,255,.6);color:var(--text)}
+  .swatches{display:flex;align-items:center;gap:10px;padding:0 4px}
+  .swatches span{font-size:12px;color:var(--muted);margin-right:2px}
+  .sw{width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.18);flex:none}
+  .sw.on{outline:2px solid var(--accent);outline-offset:2px}
+  .tools{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .tool{height:44px;border-radius:12px;background:rgba(255,255,255,.05);display:grid;place-items:center}
+  .tool svg{width:20px;height:20px}
+  .tool:active:not(:disabled){background:rgba(255,255,255,.12)}
+  .tool.danger{color:#ff8a80}
+  body.mode-ar .only-flat{display:none}
+
+  /* toast + modal */
+  #toast{position:fixed;left:50%;top:calc(70px + var(--safe-t));transform:translate(-50%,-10px);z-index:40;max-width:min(92vw,420px);
+    padding:11px 16px;border-radius:14px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;text-align:center}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  #modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:24px}
+  #modal.show{display:flex}
+  #modal .box{max-width:420px;width:100%;padding:14px;display:grid;gap:12px;text-align:center}
+  #modal img{width:100%;max-height:62vh;object-fit:contain;border-radius:12px;-webkit-user-select:auto;user-select:auto;-webkit-touch-callout:default}
+  #modal p{margin:0;color:var(--muted);font-size:13px}
+  .btns{display:flex;gap:8px}
+  .btn{flex:1;height:44px;border-radius:12px;background:rgba(255,255,255,.08);display:grid;place-items:center;text-decoration:none;color:var(--text);font-weight:600}
+  .btn.primary{background:var(--accent);color:#06121f}
+</style>
+</head>
+<body>
+<video id="video" playsinline muted autoplay></video>
+<div id="stage"></div>
+
+<!-- Start screen -->
+<section id="start">
+  <div class="wrap">
+    <div class="logo">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.8 20 7.4v9.2L12 21.2 4 16.6V7.4z"/><path d="M4 7.4 12 12l8-4.6M12 12v9.2"/></svg>
+    </div>
+    <h1>Phòng AR</h1>
+    <p class="lead">Đặt đồ nội thất 3D vào căn phòng thật qua camera điện thoại — xem trước kích thước, màu sắc và bố cục trước khi mua.</p>
+    <div class="modes">
+      <button class="mode-btn" id="btn-ar">
+        <span class="ic">🧭</span>
+        <span><b>Bắt đầu AR</b><small>Nhận diện sàn thật, đặt vật đúng tỉ lệ (Android Chrome)</small></span>
+        <span class="tag" id="tag-ar">…</span>
+      </button>
+      <button class="mode-btn" id="btn-cam">
+        <span class="ic">📷</span>
+        <span><b>Chế độ camera</b><small>Dùng cho iPhone hoặc máy chưa hỗ trợ AR</small></span>
+        <span class="tag" id="tag-cam">…</span>
+      </button>
+      <button class="mode-btn" id="btn-3d">
+        <span class="ic">🧊</span>
+        <span><b>Xem trước 3D</b><small>Không cần camera — thử bố cục trên lưới</small></span>
+        <span class="tag">Luôn chạy</span>
+      </button>
+    </div>
+    <div class="status" id="status">Đang kiểm tra thiết bị…</div>
+  </div>
+</section>
+
+<!-- In-session UI (also the WebXR DOM overlay root) -->
+<div id="overlay">
+  <div class="top">
+    <button class="glass icon-btn" id="btn-exit" aria-label="Thoát">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div class="glass hint" id="hint">…</div>
+    <div class="glass count" id="count">0 vật</div>
+  </div>
+
+  <div class="glass panel" id="panel">
+    <div class="row" id="items"></div>
+    <div class="swatches" id="swatches"><span>Màu</span></div>
+    <div class="tools">
+      <button class="tool" id="t-rotl" aria-label="Xoay trái" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/></svg></button>
+      <button class="tool" id="t-rotr" aria-label="Xoay phải" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></button>
+      <button class="tool" id="t-down" aria-label="Thu nhỏ" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>
+      <button class="tool" id="t-up" aria-label="Phóng to" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>
+      <button class="tool danger" id="t-del" aria-label="Xoá vật đang chọn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+      <button class="tool" id="t-clear" aria-label="Xoá hết" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button class="tool only-flat" id="t-shot" aria-label="Chụp ảnh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="glass"></div>
+<div id="modal">
+  <div class="glass box">
+    <img id="shot" alt="Ảnh chụp phòng AR">
+    <p>Nhấn giữ ảnh để lưu vào máy.</p>
+    <div class="btns">
+      <button class="btn" id="m-close">Đóng</button>
+      <a class="btn primary" id="m-save" download="phong-ar.jpg">Tải ảnh</a>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = (s) => document.querySelector(s);
+
+/* ================= Catalogue ================= */
+const COLORS = ['#d9cbb8', '#7a8b6f', '#3e4a61', '#c46a4a', '#e8e6e1', '#2d2f33'];
+
+const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0, ...o });
+const addBox = (g, w, h, d, m, x, y, z) => {
+  const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); me.position.set(x, y, z); g.add(me); return me;
+};
+const addCyl = (g, rt, rb, h, m, x, y, z, seg = 32, open = false) => {
+  const me = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg, 1, open), m); me.position.set(x, y, z); g.add(me); return me;
+};
+const WOOD = () => mat(0x8b5a2b, { roughness: 0.6 });
+const METAL = () => mat(0x24272c, { roughness: 0.35, metalness: 0.6 });
+
+// Sizes are real-world metres; every object's front faces +Z.
+const ITEMS = {
+  chair: { name: 'Ghế', emoji: '🪑', color: '#c46a4a', fp: [0.6, 0.6], build(c) {
+    const g = new THREE.Group(), body = mat(c), wood = WOOD();
+    addBox(g, 0.46, 0.06, 0.46, body, 0, 0.45, 0);
+    addBox(g, 0.46, 0.42, 0.05, body, 0, 0.69, -0.205);
+    for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) addBox(g, 0.04, 0.42, 0.04, wood, x, 0.21, z);
+    return { g, paint: [body] };
+  } },
+  sofa: { name: 'Sofa', emoji: '🛋️', color: '#3e4a61', fp: [1.9, 0.95], build(c) {
+    const g = new THREE.Group(), body = mat(c, { roughness: 0.9 }), wood = WOOD();
+    addBox(g, 1.8, 0.25, 0.85, body, 0, 0.205, 0);
+    for (const x of [-0.4, 0.4]) addBox(g, 0.78, 0.14, 0.62, body, x, 0.40, 0.08);
+    addBox(g, 1.8, 0.45, 0.2, body, 0, 0.555, -0.325);
+    for (const x of [-0.82, 0.82]) addBox(g, 0.16, 0.30, 0.85, body, x, 0.48, 0);
+    for (const [x, z] of [[-0.82, -0.36], [0.82, -0.36], [-0.82, 0.36], [0.82, 0.36]]) addCyl(g, 0.025, 0.02, 0.08, wood, x, 0.04, z, 12);
+    return { g, paint: [body] };
+  } },
+  table: { name: 'Bàn trà', emoji: '☕', color: '#e8e6e1', fp: [0.85, 0.85], build(c) {
+    const g = new THREE.Group(), top = mat(c, { roughness: 0.4 }), metal = METAL();
+    addCyl(g, 0.4, 0.4, 0.04, top, 0, 0.42, 0, 48);
+    addCyl(g, 0.045, 0.045, 0.38, metal, 0, 0.21, 0, 20);
+    addCyl(g, 0.22, 0.22, 0.025, metal, 0, 0.0125, 0, 40);
+    return { g, paint: [top] };
+  } },
+  plant: { name: 'Cây cảnh', emoji: '🪴', color: '#d9cbb8', fp: [0.5, 0.5], build(c) {
+    const g = new THREE.Group(), pot = mat(c, { roughness: 0.5 });
+    const soil = mat(0x3b2a1e, { roughness: 1 }), trunk = mat(0x6b4a2b), leaf = mat(0x4f8a3c, { roughness: 0.8, flatShading: true });
+    addCyl(g, 0.16, 0.12, 0.3, pot, 0, 0.15, 0, 32);
+    addCyl(g, 0.15, 0.15, 0.02, soil, 0, 0.29, 0, 32);
+    addCyl(g, 0.015, 0.02, 0.4, trunk, 0, 0.48, 0, 8);
+    const blobs = [[0, 0.82, 0, 0.2], [0.12, 0.72, 0.05, 0.15], [-0.11, 0.74, -0.04, 0.15], [0.03, 0.70, -0.13, 0.13], [-0.04, 0.95, 0.06, 0.13]];
+    for (const [x, y, z, r] of blobs) { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leaf); m.position.set(x, y, z); g.add(m); }
+    return { g, paint: [pot] };
+  } },
+  lamp: { name: 'Đèn cây', emoji: '💡', color: '#e8e6e1', fp: [0.45, 0.45], build(c) {
+    const g = new THREE.Group(), metal = METAL();
+    const shade = mat(c, { side: THREE.DoubleSide, emissive: 0xffd9a0, emissiveIntensity: 0.25, roughness: 0.9 });
+    addCyl(g, 0.16, 0.16, 0.03, metal, 0, 0.015, 0, 40);
+    addCyl(g, 0.012, 0.012, 1.4, metal, 0, 0.73, 0, 12);
+    addCyl(g, 0.14, 0.23, 0.28, shade, 0, 1.44, 0, 40, true);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 20, 12), new THREE.MeshBasicMaterial({ color: 0xfff1d6 }));
+    bulb.position.y = 1.38; g.add(bulb);
+    return { g, paint: [shade] };
+  } },
+};
+
+/* ================= Renderer & scene ================= */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0x000000, 0);
+renderer.xr.enabled = true;
+$('#stage').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 60);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7f73, 1.7));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(2, 4, 1.5); scene.add(sun);
+
+const world = new THREE.Group(); scene.add(world);
+
+const previewEnv = new THREE.Group();
+previewEnv.add(new THREE.GridHelper(12, 24, 0x3d4b5e, 0x232b36));
+const floor = new THREE.Mesh(new THREE.CircleGeometry(6, 64), new THREE.MeshBasicMaterial({ color: 0x161b22 }));
+floor.rotation.x = -Math.PI / 2; floor.position.y = -0.001; previewEnv.add(floor);
+previewEnv.visible = false; scene.add(previewEnv);
+const PREVIEW_BG = new THREE.Color(0x10141a);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.49;
+controls.minDistance = 0.8; controls.maxDistance = 9; controls.enabled = false;
+
+// Soft contact shadow under each object (cheap, works in every mode)
+const shadowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(0,0,0,.55)'); gr.addColorStop(0.55, 'rgba(0,0,0,.22)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+const contactShadow = (w, d) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.003; m.renderOrder = -1; m.userData.noPick = true; return m;
+};
+
+// Selection ring (child of the selected object)
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.47, 0.5, 64),
+  new THREE.MeshBasicMaterial({ color: 0x4da3ff, transparent: true, depthWrite: false }));
+ring.rotation.x = -Math.PI / 2; ring.position.y = 0.006; ring.userData.noPick = true;
+
+// AR reticle
+const reticle = new THREE.Group();
+{
+  const rg = new THREE.RingGeometry(0.075, 0.095, 48).rotateX(-Math.PI / 2);
+  const dg = new THREE.CircleGeometry(0.014, 20).rotateX(-Math.PI / 2);
+  const m = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  reticle.add(new THREE.Mesh(rg, m), new THREE.Mesh(dg, m));
+}
+reticle.matrixAutoUpdate = false; reticle.visible = false; scene.add(reticle);
+
+/* ================= State ================= */
+const state = { mode: null, item: 'chair', color: null, selected: null, objects: [] };
+const raycaster = new THREE.Raycaster();
+const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const clock = new THREE.Clock();
+let xrSession = null, hitSource = null, stream = null;
+
+/* ================= UI build ================= */
+const itemsRow = $('#items');
+for (const [key, it] of Object.entries(ITEMS)) {
+  const b = document.createElement('button');
+  b.className = 'chip' + (key === state.item ? ' on' : ''); b.dataset.key = key;
+  b.innerHTML = `<span class="e">${it.emoji}</span>${it.name}`;
+  b.onclick = () => { state.item = key; state.color = null; refreshChips(); refreshSwatches(); updateHint(); };
+  itemsRow.appendChild(b);
+}
+const swRow = $('#swatches');
+for (const c of COLORS) {
+  const b = document.createElement('button'); b.className = 'sw'; b.style.background = c; b.dataset.c = c;
+  b.setAttribute('aria-label', 'Màu ' + c);
+  b.onclick = () => { state.color = c; if (state.selected) paint(state.selected, c); refreshSwatches(); };
+  swRow.appendChild(b);
+}
+function refreshChips() { itemsRow.querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.key === state.item)); }
+function refreshSwatches() {
+  const cur = state.selected ? state.selected.userData.color : (state.color ?? ITEMS[state.item].color);
+  swRow.querySelectorAll('.sw').forEach(b => b.classList.toggle('on', b.dataset.c === cur));
+}
+refreshSwatches();
+
+// Taps on the UI must not place objects in WebXR
+for (const el of [$('#panel'), $('.top')]) el.addEventListener('beforexrselect', e => e.preventDefault());
+
+let toastTimer;
+function toast(msg, ms = 2600) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+let lastHint = '';
+function updateHint() {
+  const n = ITEMS[state.item].name.toLowerCase();
+  let h = '';
+  if (state.mode === 'ar') h = reticle.visible ? `Chạm để đặt ${n}` : 'Lia máy chậm để quét sàn…';
+  else if (state.mode === 'camera') h = `Chạm sàn để đặt ${n}`;
+  else if (state.mode === 'preview') h = `Chạm lưới để đặt ${n} · kéo để xoay`;
+  if (h !== lastHint) { $('#hint').textContent = h; lastHint = h; }
+}
+function updateCount() {
+  $('#count').textContent = `${state.objects.length} vật`;
+  const has = !!state.selected;
+  for (const id of ['#t-rotl', '#t-rotr', '#t-down', '#t-up', '#t-del']) $(id).disabled = !has;
+  $('#t-clear').disabled = state.objects.length === 0;
+}
+const haptic = () => { try { navigator.vibrate?.(12); } catch {} };
+
+/* ================= Objects ================= */
+function place(pos) {
+  const def = ITEMS[state.item], color = state.color ?? def.color;
+  const built = def.build(color);
+  const holder = new THREE.Group();
+  holder.add(built.g, contactShadow(def.fp[0] * 1.35, def.fp[1] * 1.35));
+  holder.position.copy(pos);
+  const camPos = new THREE.Vector3(); currentCamera().getWorldPosition(camPos);
+  holder.rotation.y = Math.atan2(camPos.x - pos.x, camPos.z - pos.z); // face the viewer
+  holder.userData = { paint: built.paint, fp: def.fp, color, scale: 1, spawn: 0 };
+  holder.scale.setScalar(0.001);
+  world.add(holder); state.objects.push(holder);
+  select(holder); haptic();
+}
+function paint(obj, c) { obj.userData.color = c; obj.userData.paint.forEach(m => m.color.set(c)); }
+function select(obj) {
+  state.selected = obj;
+  if (obj) { obj.add(ring); ring.scale.setScalar(Math.max(...obj.userData.fp) * 1.05); }
+  else ring.removeFromParent();
+  refreshSwatches(); updateCount();
+}
+function removeObj(obj) {
+  obj.removeFromParent();
+  obj.traverse(o => { if (o.isMesh && o !== ring) { o.geometry.dispose(); [].concat(o.material).forEach(m => m !== ring.material && m.dispose()); } });
+  state.objects = state.objects.filter(o => o !== obj);
+}
+function clearAll() { ring.removeFromParent(); [...state.objects].forEach(removeObj); select(null); }
+function pickObject() {
+  const hits = raycaster.intersectObjects(state.objects, true).filter(h => !h.object.userData.noPick);
+  if (!hits.length) return null;
+  let o = hits[0].object; while (o.parent && o.parent !== world) o = o.parent;
+  return o;
+}
+const currentCamera = () => (renderer.xr.isPresenting ? renderer.xr.getCamera() : camera);
+
+$('#t-rotl').onclick = () => { if (state.selected) state.selected.rotation.y += Math.PI / 12; };
+$('#t-rotr').onclick = () => { if (state.selected) state.selected.rotation.y -= Math.PI / 12; };
+const rescale = (f) => { const s = state.selected; if (!s) return;
+  s.userData.scale = THREE.MathUtils.clamp(s.userData.scale * f, 0.3, 3); s.scale.setScalar(s.userData.scale);
+  toast(`Tỉ lệ ${Math.round(s.userData.scale * 100)}%`, 900); };
+$('#t-up').onclick = () => rescale(1.1);
+$('#t-down').onclick = () => rescale(1 / 1.1);
+$('#t-del').onclick = () => { if (!state.selected) return; ring.removeFromParent(); removeObj(state.selected);
+  select(state.objects[state.objects.length - 1] ?? null); };
+$('#t-clear').onclick = () => { clearAll(); toast('Đã xoá tất cả'); };
+
+/* ================= Tap handling (camera + preview) ================= */
+let down = null;
+renderer.domElement.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || state.mode === 'ar' || !state.mode) return;
+  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = performance.now() - down.t; down = null;
+  if (moved > 8 || dt > 400) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  const obj = pickObject();
+  if (obj) { select(obj); return; }
+  const p = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(floorPlane, p) || p.distanceTo(camera.position) > 10) { toast('Hãy chạm vào vùng sàn'); return; }
+  place(p);
+});
+
+/* ================= Mode: WebXR AR ================= */
+async function startAR() {
+  document.body.classList.add('in-session', 'mode-ar');
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay'], domOverlay: { root: $('#overlay') },
+    });
+  } catch (err) {
+    document.body.classList.remove('in-session', 'mode-ar');
+    toast('Không mở được AR: ' + (err.message || err)); return;
+  }
+  renderer.xr.setReferenceSpaceType('local');
+  await renderer.xr.setSession(xrSession);
+  enterMode('ar');
+  const viewer = await xrSession.requestReferenceSpace('viewer');
+  hitSource = await xrSession.requestHitTestSource({ space: viewer });
+  xrSession.addEventListener('select', onXRSelect);
+  xrSession.addEventListener('end', () => { hitSource = null; xrSession = null; leaveMode(); });
+}
+function onXRSelect(e) {
+  const ref = renderer.xr.getReferenceSpace();
+  const pose = e.frame?.getPose(e.inputSource.targetRaySpace, ref);
+  if (pose) {
+    const m = new THREE.Matrix4().fromArray(pose.transform.matrix);
+    raycaster.ray.origin.setFromMatrixPosition(m);
+    raycaster.ray.direction.set(0, 0, -1).transformDirection(m);
+    const obj = pickObject();
+    if (obj) { select(obj); return; }
+  }
+  if (reticle.visible) place(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
+}
+
+/* ================= Mode: camera passthrough (3DoF) ================= */
+const ori = { has: false, a: 0, b: 0, g: 0, a0: null };
+const onOrient = (e) => {
+  if (e.alpha == null) return;
+  ori.a = e.alpha; ori.b = e.beta; ori.g = e.gamma; ori.has = true;
+  if (ori.a0 == null) ori.a0 = e.alpha;
+};
+async function startCamera() {
+  // Ask for motion permission first, while we are still inside the tap (iOS requirement)
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { if ((await DeviceOrientationEvent.requestPermission()) === 'granted') addEventListener('deviceorientation', onOrient); } catch {}
+  } else addEventListener('deviceorientation', onOrient);
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+  } catch (err) {
+    removeEventListener('deviceorientation', onOrient);
+    toast('Không mở được camera — chuyển sang Xem trước 3D', 3200); startPreview(); return;
+  }
+  const v = $('#video'); v.srcObject = stream; try { await v.play(); } catch {}
+  ori.a0 = null;
+  camera.position.set(0, 1.35, 0); camera.rotation.set(-0.6, 0, 0);
+  enterMode('camera');
+  setTimeout(() => { if (!ori.has) toast('Không có cảm biến xoay — vật sẽ cố định theo khung hình', 3500); }, 1500);
+}
+const _e = new THREE.Euler(), _q0 = new THREE.Quaternion(), _qt = new THREE.Quaternion();
+const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)), _z = new THREE.Vector3(0, 0, 1);
+function updateCameraFromOrientation() {
+  if (!ori.has) return;
+  const d = THREE.MathUtils.degToRad;
+  const screenAngle = d(screen.orientation?.angle ?? window.orientation ?? 0);
+  _e.set(d(ori.b), d(ori.a - ori.a0), -d(ori.g), 'YXZ');
+  _qt.setFromEuler(_e).multiply(_q1).multiply(_q0.setFromAxisAngle(_z, -screenAngle));
+  camera.quaternion.slerp(_qt, 0.35);
+}
+
+/* ================= Mode: 3D preview ================= */
+function startPreview() {
+  camera.position.set(2.4, 1.8, 3); controls.target.set(0, 0.4, 0); controls.update();
+  enterMode('preview');
+}
+
+/* ================= Mode plumbing ================= */
+function enterMode(mode) {
+  state.mode = mode;
+  document.body.className = `in-session mode-${mode}`;
+  $('#start').hidden = true;
+  previewEnv.visible = mode === 'preview';
+  scene.background = mode === 'preview' ? PREVIEW_BG : null;
+  controls.enabled = mode === 'preview';
+  reticle.visible = false; lastHint = ''; updateHint(); updateCount();
+}
+function leaveMode() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; $('#video').srcObject = null; }
+  removeEventListener('deviceorientation', onOrient); ori.has = false;
+  clearAll();
+  state.mode = null; controls.enabled = false; previewEnv.visible = false; scene.background = null; reticle.visible = false;
+  document.body.className = ''; $('#start').hidden = false;
+  onResize();
+}
+$('#btn-exit').onclick = () => { if (xrSession) xrSession.end(); else leaveMode(); };
+
+/* ================= Screenshot ================= */
+$('#t-shot').onclick = () => {
+  const src = renderer.domElement, w = src.width, h = src.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+  if (state.mode === 'camera') {
+    const v = $('#video'), vw = v.videoWidth, vh = v.videoHeight;
+    if (vw && vh) { const s = Math.max(w / vw, h / vh); g.drawImage(v, (w - vw * s) / 2, (h - vh * s) / 2, vw * s, vh * s); }
+  }
+  const parent = ring.parent; ring.removeFromParent();
+  renderer.render(scene, camera); g.drawImage(src, 0, 0);
+  if (parent) parent.add(ring);
+  const url = c.toDataURL('image/jpeg', 0.9);
+  $('#shot').src = url; $('#m-save').href = url;
+  $('#m-save').style.display = window.self !== window.top ? 'none' : ''; // downloads are blocked inside embedded frames
+  $('#modal').classList.add('show');
+};
+$('#m-close').onclick = () => $('#modal').classList.remove('show');
+
+/* ================= Loop ================= */
+const easeOutBack = (x) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2; };
+function render(t, frame) {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (state.mode === 'ar' && frame && hitSource) {
+    const res = frame.getHitTestResults(hitSource);
+    if (res.length) {
+      const pose = res[0].getPose(renderer.xr.getReferenceSpace());
+      reticle.visible = !!pose; if (pose) reticle.matrix.fromArray(pose.transform.matrix);
+    } else reticle.visible = false;
+    updateHint();
+  }
+  if (state.mode === 'camera') updateCameraFromOrientation();
+  if (state.mode === 'preview') controls.update();
+  for (const o of state.objects) {
+    if (o.userData.spawn < 1) {
+      o.userData.spawn = Math.min(1, o.userData.spawn + dt / 0.4);
+      o.scale.setScalar(Math.max(0.001, easeOutBack(o.userData.spawn) * o.userData.scale));
+    }
+  }
+  ring.material.opacity = 0.65 + 0.3 * Math.sin(t * 0.005);
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(render);
+
+function onResize() {
+  if (renderer.xr.isPresenting) return;
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+}
+addEventListener('resize', onResize);
+
+/* ================= Capability check ================= */
+const secure = window.isSecureContext;
+const camOK = !!navigator.mediaDevices?.getUserMedia;
+let arOK = false;
+try { arOK = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')); } catch {}
+
+const setTag = (id, ok, yes, no) => { const el = $(id); el.textContent = ok ? yes : no; el.closest('.mode-btn').classList.toggle('off', !ok); };
+setTag('#tag-ar', arOK, 'Hỗ trợ', 'Không hỗ trợ');
+setTag('#tag-cam', camOK && secure, 'Sẵn sàng', 'Không khả dụng');
+const best = arOK ? '#btn-ar' : (camOK && secure ? '#btn-cam' : '#btn-3d');
+$(best).classList.add('rec'); $(best).querySelector('.tag').textContent = 'Khuyên dùng';
+
+const st = $('#status');
+if (!secure) st.innerHTML = '<b>Cần HTTPS.</b> Camera và AR chỉ chạy khi trang được mở qua https:// (hoặc localhost). Hiện chỉ dùng được Xem trước 3D.';
+else if (arOK) st.innerHTML = '<b>Máy này hỗ trợ WebXR AR.</b> Lia camera xuống sàn, đợi vòng tròn trắng xuất hiện rồi chạm để đặt vật.';
+else if (camOK) st.innerHTML = '<b>Chưa hỗ trợ AR đầy đủ</b> (thường gặp trên iPhone). Chế độ camera sẽ ước lượng mặt sàn bằng cảm biến xoay của máy.';
+else st.innerHTML = '<b>Không truy cập được camera</b> trong khung này. Hãy dùng Xem trước 3D, hoặc mở trang trên điện thoại.';
+
+$('#btn-ar').onclick = () => arOK ? startAR() : toast('Thiết bị/trình duyệt này chưa hỗ trợ WebXR AR');
+$('#btn-cam').onclick = () => (camOK && secure) ? startCamera() : toast('Camera không khả dụng ở đây');
+$('#btn-3d').onclick = startPreview;
+</script>
+</body>
+</html>
