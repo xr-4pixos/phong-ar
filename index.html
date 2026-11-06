@@ -81,6 +81,9 @@
   .tool:active:not(:disabled){background:rgba(255,255,255,.12)}
   .tool.danger{color:#ff8a80}
   body.mode-ar .only-flat{display:none}
+  .ql-btn{height:46px;border-radius:12px;background:var(--accent);color:#06121f;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px}
+  .ql-btn[hidden]{display:none}
+  .ql-btn svg{width:20px;height:20px}
 
   /* toast + modal */
   #toast{position:fixed;left:50%;top:calc(70px + var(--safe-t));transform:translate(-50%,-10px);z-index:40;max-width:min(92vw,420px);
@@ -142,6 +145,7 @@
   <div class="glass panel" id="panel">
     <div class="row" id="items"></div>
     <div class="swatches" id="swatches"><span>Màu</span></div>
+    <button class="ql-btn only-flat" id="btn-ql" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.8 20 7.4v9.2L12 21.2 4 16.6V7.4z"/><path d="M4 7.4 12 12l8-4.6M12 12v9.2"/></svg><span>Xem AR thật (bám sàn)</span></button>
     <div class="tools">
       <button class="tool" id="t-rotl" aria-label="Xoay trái" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/></svg></button>
       <button class="tool" id="t-rotr" aria-label="Xoay phải" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></button>
@@ -217,10 +221,11 @@ const ITEMS = {
     return { g, paint: [top] };
   } },
   plant: { name: 'Cây cảnh', emoji: '🪴', color: '#d9cbb8', fp: [0.5, 0.5], build(c) {
-    const g = new THREE.Group(), pot = mat(c, { roughness: 0.5 });
+    const g = new THREE.Group(), pot = mat(c, { roughness: 0.5, side: THREE.DoubleSide });
     const soil = mat(0x3b2a1e, { roughness: 1 }), trunk = mat(0x6b4a2b), leaf = mat(0x4f8a3c, { roughness: 0.8, flatShading: true });
-    addCyl(g, 0.16, 0.12, 0.3, pot, 0, 0.15, 0, 32);
-    addCyl(g, 0.15, 0.15, 0.02, soil, 0, 0.29, 0, 32);
+    addCyl(g, 0.16, 0.12, 0.3, pot, 0, 0.15, 0, 32, true);   // open rim
+    addCyl(g, 0.12, 0.12, 0.01, pot, 0, 0.005, 0, 32);       // pot base
+    addCyl(g, 0.152, 0.152, 0.02, soil, 0, 0.27, 0, 32);     // soil sits below the rim
     addCyl(g, 0.015, 0.02, 0.4, trunk, 0, 0.48, 0, 8);
     const blobs = [[0, 0.82, 0, 0.2], [0.12, 0.72, 0.05, 0.15], [-0.11, 0.74, -0.04, 0.15], [0.03, 0.70, -0.13, 0.13], [-0.04, 0.95, 0.06, 0.13]];
     for (const [x, y, z, r] of blobs) { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leaf); m.position.set(x, y, z); g.add(m); }
@@ -232,7 +237,7 @@ const ITEMS = {
     addCyl(g, 0.16, 0.16, 0.03, metal, 0, 0.015, 0, 40);
     addCyl(g, 0.012, 0.012, 1.4, metal, 0, 0.73, 0, 12);
     addCyl(g, 0.14, 0.23, 0.28, shade, 0, 1.44, 0, 40, true);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 20, 12), new THREE.MeshBasicMaterial({ color: 0xfff1d6 }));
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 20, 12), mat(0xfff1d6, { emissive: 0xfff1d6, emissiveIntensity: 1 }));
     bulb.position.y = 1.38; g.add(bulb);
     return { g, paint: [shade] };
   } },
@@ -357,7 +362,7 @@ function place(pos) {
   holder.position.copy(pos);
   const camPos = new THREE.Vector3(); currentCamera().getWorldPosition(camPos);
   holder.rotation.y = Math.atan2(camPos.x - pos.x, camPos.z - pos.z); // face the viewer
-  holder.userData = { paint: built.paint, fp: def.fp, color, scale: 1, spawn: 0 };
+  holder.userData = { paint: built.paint, fp: def.fp, color, scale: 1, spawn: 0, kind: state.item };
   holder.scale.setScalar(0.001);
   world.add(holder); state.objects.push(holder);
   select(holder); haptic();
@@ -554,6 +559,47 @@ function onResize() {
 }
 addEventListener('resize', onResize);
 
+/* ================= iPhone: AR Quick Look (ARKit) ================= */
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const qlOK = (() => { try { return document.createElement('a').relList.supports('ar'); } catch { return false; } })();
+if (isIOS) $('#btn-ql').hidden = false;
+
+// Rebuild the current layout (or the selected item if nothing is placed) as a clean scene: no shadows/rings.
+async function buildUSDZ() {
+  const { USDZExporter } = await import('three/addons/exporters/USDZExporter.js');
+  const sc = new THREE.Scene();
+  const objs = state.objects.length ? state.objects : null;
+  const center = new THREE.Vector3();
+  if (objs) { objs.forEach(o => center.add(o.position)); center.divideScalar(objs.length); }
+  const list = objs ? objs.map(o => ({ kind: o.userData.kind, color: o.userData.color, pos: o.position, rotY: o.rotation.y, scale: o.userData.scale }))
+                    : [{ kind: state.item, color: state.color ?? ITEMS[state.item].color, pos: new THREE.Vector3(), rotY: 0, scale: 1 }];
+  for (const it of list) {
+    const g = ITEMS[it.kind].build(it.color).g;
+    g.position.set(it.pos.x - center.x, 0, it.pos.z - center.z);
+    g.rotation.y = it.rotY; g.scale.setScalar(it.scale);
+    sc.add(g);
+  }
+  sc.updateMatrixWorld(true);
+  const ex = new USDZExporter();
+  return ex.parseAsync ? ex.parseAsync(sc) : new Promise((res, rej) => { const r = ex.parse(sc, res, rej); if (r && r.then) r.then(res, rej); });
+}
+async function openQuickLook() {
+  if (!qlOK) { toast(isIOS ? 'Hãy mở trang bằng Safari để dùng AR thật' : 'AR Quick Look chỉ có trên iPhone/iPad (Safari)', 3200); return; }
+  const btn = $('#btn-ql'), label = btn.innerHTML;
+  btn.disabled = true; btn.querySelector('span').textContent = 'Đang chuẩn bị mô hình…';
+  try {
+    const buf = await buildUSDZ();
+    const a = document.createElement('a');
+    a.rel = 'ar'; a.download = 'phong-ar.usdz';
+    a.href = URL.createObjectURL(new Blob([buf], { type: 'model/vnd.usdz+zip' }));
+    a.appendChild(document.createElement('img'));   // Safari only treats rel="ar" links with an <img> child as AR links
+    a.click();
+  } catch (err) { toast('Không tạo được mô hình AR: ' + (err.message || err), 3500); }
+  finally { btn.disabled = false; btn.innerHTML = label; }
+}
+$('#btn-ql').onclick = openQuickLook;
+window.__phongAR = { buildUSDZ };   // test hook
+
 /* ================= Capability check ================= */
 const secure = window.isSecureContext;
 const camOK = !!navigator.mediaDevices?.getUserMedia;
@@ -569,7 +615,9 @@ $(best).classList.add('rec'); $(best).querySelector('.tag').textContent = 'Khuy�
 const st = $('#status');
 if (!secure) st.innerHTML = '<b>Cần HTTPS.</b> Camera và AR chỉ chạy khi trang được mở qua https:// (hoặc localhost). Hiện chỉ dùng được Xem trước 3D.';
 else if (arOK) st.innerHTML = '<b>Máy này hỗ trợ WebXR AR.</b> Lia camera xuống sàn, đợi vòng tròn trắng xuất hiện rồi chạm để đặt vật.';
-else if (camOK) st.innerHTML = '<b>Chưa hỗ trợ AR đầy đủ</b> (thường gặp trên iPhone). Chế độ camera sẽ ước lượng mặt sàn bằng cảm biến xoay của máy.';
+else if (isIOS && qlOK) st.innerHTML = '<b>iPhone:</b> sắp xếp đồ ở chế độ camera hoặc 3D, rồi bấm <b>Xem AR thật</b> để mở bằng ARKit — vật bám sàn thật, đi vòng quanh được.';
+else if (isIOS) st.innerHTML = '<b>Hãy mở trang này bằng Safari</b> để dùng AR thật (Quick Look). Trình duyệt trong app khác chỉ chạy được chế độ camera ước lượng.';
+else if (camOK) st.innerHTML = '<b>Chưa hỗ trợ AR đầy đủ</b>. Chế độ camera sẽ ước lượng mặt sàn bằng cảm biến xoay của máy.';
 else st.innerHTML = '<b>Không truy cập được camera</b> trong khung này. Hãy dùng Xem trước 3D, hoặc mở trang trên điện thoại.';
 
 $('#btn-ar').onclick = () => arOK ? startAR() : toast('Thiết bị/trình duyệt này chưa hỗ trợ WebXR AR');
