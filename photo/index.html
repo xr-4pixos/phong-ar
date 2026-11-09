@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<title>Chụp ảnh cùng dự án — Phòng AR</title>
+<style>
+  :root{
+    --bg:#0e1116; --glass:rgba(16,19,24,.72); --line:rgba(255,255,255,.1);
+    --text:#eef1f5; --muted:#9aa4b2; --accent:#4da3ff;
+    --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:#000;color:var(--text);overflow:hidden;
+    font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  button:disabled{opacity:.4}
+  .screen{position:fixed;inset:0;display:none}
+  .screen.on{display:block}
+  .glass{background:var(--glass);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--line)}
+  video.feed{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+  /* start */
+  #start{background:radial-gradient(120% 80% at 50% 0%,rgba(77,163,255,.22),transparent 60%),var(--bg)}
+  #start .wrap{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:28px 24px calc(28px + var(--sb));max-width:440px;margin:0 auto}
+  h1{font-size:30px;line-height:1.12;margin:0 0 10px;letter-spacing:-.02em}
+  .lead{color:var(--muted);margin:0 0 28px}
+  .big{display:flex;align-items:center;gap:14px;width:100%;padding:16px;border-radius:16px;text-align:left;margin-bottom:10px;
+    background:rgba(255,255,255,.05);border:1px solid var(--line)}
+  .big.primary{background:rgba(77,163,255,.14);border-color:rgba(77,163,255,.5)}
+  .big .ic{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.07);flex:none}
+  .big .ic svg{width:22px;height:22px}
+  .big b{display:block;font-size:16px}.big small{color:var(--muted);font-size:13px}
+  .note{margin-top:14px;font-size:12.5px;color:var(--muted)}
+
+  /* scan */
+  #scan .frame{position:absolute;left:50%;top:44%;width:min(68vw,300px);aspect-ratio:1;transform:translate(-50%,-50%);
+    border-radius:22px;box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
+  #scan .frame i{position:absolute;width:34px;height:34px;border:4px solid #fff;border-radius:6px}
+  #scan .frame i:nth-child(1){left:-2px;top:-2px;border-right:0;border-bottom:0}
+  #scan .frame i:nth-child(2){right:-2px;top:-2px;border-left:0;border-bottom:0}
+  #scan .frame i:nth-child(3){left:-2px;bottom:-2px;border-right:0;border-top:0}
+  #scan .frame i:nth-child(4){right:-2px;bottom:-2px;border-left:0;border-top:0}
+  #scan .frame::after{content:"";position:absolute;left:8%;right:8%;height:2px;background:var(--accent);box-shadow:0 0 12px var(--accent);
+    top:10%;animation:sweep 1.8s ease-in-out infinite alternate}
+  @keyframes sweep{to{top:90%}}
+  .topbar{position:absolute;left:0;right:0;top:0;padding:calc(12px + var(--st)) 12px 0;display:flex;align-items:center;gap:8px;z-index:3}
+  .pill{padding:10px 14px;border-radius:14px;font-size:14px;flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .icon{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;flex:none}
+  .icon svg{width:22px;height:22px}
+  .bottombar{position:absolute;left:0;right:0;bottom:0;padding:0 16px calc(18px + var(--sb));z-index:3}
+  .linkbtn{display:block;margin:0 auto;padding:12px 18px;border-radius:14px;font-weight:600}
+
+  /* booth */
+  #out{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+  .thumbs{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 14px;scrollbar-width:none}
+  .thumbs::-webkit-scrollbar{display:none}
+  .thumb{flex:none;width:60px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;color:#dfe5ee;text-shadow:0 1px 2px #000}
+  .thumb .sw{width:56px;height:56px;border-radius:14px;background:#222 center/cover no-repeat;border:2px solid rgba(255,255,255,.35);display:grid;place-items:center}
+  .thumb .sw svg{width:24px;height:24px}
+  .thumb.on .sw{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+  .controls{display:flex;align-items:center;justify-content:space-between;padding:0 18px}
+  .shutter{width:76px;height:76px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center}
+  .shutter::after{content:"";width:60px;height:60px;border-radius:50%;background:#fff;transition:transform .1s}
+  .shutter:active::after{transform:scale(.9)}
+  #count{position:absolute;inset:0;display:none;place-items:center;font-size:120px;font-weight:800;color:#fff;text-shadow:0 4px 30px rgba(0,0,0,.6);z-index:4;pointer-events:none}
+  #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:5;transition:opacity .35s}
+  #loading{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:12px 18px;border-radius:14px;z-index:4;display:none;white-space:nowrap}
+
+  /* result */
+  #result{background:var(--bg)}
+  #result img{position:absolute;left:16px;right:16px;top:calc(16px + var(--st));bottom:calc(100px + var(--sb));width:calc(100% - 32px);height:calc(100% - 116px - var(--st) - var(--sb));
+    object-fit:contain;-webkit-user-select:auto;user-select:auto;-webkit-touch-callout:default}
+  #result .row{position:absolute;left:16px;right:16px;bottom:calc(20px + var(--sb));display:flex;gap:10px}
+  .btn{flex:1;height:52px;border-radius:14px;background:rgba(255,255,255,.09);font-weight:600;display:grid;place-items:center;text-decoration:none;color:var(--text)}
+  .btn.primary{background:var(--accent);color:#06121f}
+  #result .hint{position:absolute;left:0;right:0;bottom:calc(80px + var(--sb));text-align:center;font-size:12px;color:var(--muted)}
+
+  #toast{position:fixed;left:50%;top:calc(70px + var(--st));transform:translate(-50%,-8px);padding:11px 16px;border-radius:14px;z-index:50;
+    opacity:0;transition:.25s;pointer-events:none;max-width:90vw;text-align:center;font-size:14px}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  input[type=file]{display:none}
+</style>
+</head>
+<body>
+
+<!-- START -->
+<section class="screen on" id="start">
+  <div class="wrap">
+    <h1>Chụp ảnh cùng dự án</h1>
+    <p class="lead">Quét mã QR của dự án để mở bộ nền, rồi chụp ảnh bằng camera trước hoặc sau. App tự tách người và thay nền.</p>
+    <button class="big primary" id="go-scan">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8 8h3v3H8zM13 13h3v3h-3zM13 8h3M8 16h3"/></svg></span>
+      <span><b>Quét mã QR</b><small>Mở bộ nền của dự án</small></span>
+    </button>
+    <button class="big" id="go-booth">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+      <span><b>Chụp ngay</b><small>Dùng bộ nền mặc định</small></span>
+    </button>
+    <button class="big" id="go-photo">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></span>
+      <span><b>Dùng ảnh có sẵn</b><small>Chọn ảnh chân dung trong máy</small></span>
+    </button>
+    <p class="note">Ảnh được xử lý ngay trên điện thoại, không gửi lên máy chủ.</p>
+  </div>
+</section>
+
+<!-- SCAN -->
+<section class="screen" id="scan">
+  <video class="feed" id="scanVideo" playsinline muted autoplay></video>
+  <div class="frame"><i></i><i></i><i></i><i></i></div>
+  <div class="topbar">
+    <button class="icon glass" data-back aria-label="Quay lại"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="pill glass">Đưa mã QR vào khung</div>
+  </div>
+  <div class="bottombar"><button class="linkbtn glass" id="skip-scan">Bỏ qua, chụp ngay</button></div>
+</section>
+
+<!-- BOOTH -->
+<section class="screen" id="booth">
+  <canvas id="out"></canvas>
+  <video id="camVideo" playsinline muted autoplay style="display:none"></video>
+  <div id="loading" class="glass">Đang tải bộ tách nền…</div>
+  <div id="count"></div>
+  <div id="flash"></div>
+  <div class="topbar">
+    <button class="icon glass" data-back aria-label="Quay lại"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="pill glass" id="project">Phòng AR</div>
+  </div>
+  <div class="bottombar">
+    <div class="thumbs" id="thumbs"></div>
+    <div class="controls">
+      <button class="icon glass" id="pick-photo" aria-label="Chọn ảnh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></button>
+      <button class="shutter" id="shutter" aria-label="Chụp"></button>
+      <button class="icon glass" id="flip" aria-label="Đổi camera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h3l2-3h6l2 3h3v10H4z"/><path d="M9 13.5a3 3 0 0 1 5-2.2M15 13.5a3 3 0 0 1-5 2.2"/><path d="M14 9.8v1.6h-1.6M10 17.2v-1.6h1.6"/></svg></button>
+    </div>
+  </div>
+</section>
+
+<!-- RESULT -->
+<section class="screen" id="result">
+  <img id="shot" alt="Ảnh đã chụp">
+  <div class="hint">Nhấn giữ ảnh để lưu vào máy</div>
+  <div class="row">
+    <button class="btn" id="again">Chụp lại</button>
+    <a class="btn" id="save" download="anh-du-an.jpg">Lưu ảnh</a>
+    <button class="btn primary" id="share">Chia sẻ</button>
+  </div>
+</section>
+
+<input type="file" id="photoInput" accept="image/*">
+<input type="file" id="bgInput" accept="image/*">
+<div id="toast" class="glass"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script type="module">
+import { FilesetResolver, ImageSegmenter } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+const $ = (s) => document.querySelector(s);
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MODEL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
+
+/* ---------- small helpers ---------- */
+let toastT;
+function toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
+function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
+const haptic = () => { try { navigator.vibrate?.(20); } catch {} };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+
+/* ---------- backgrounds (SVG, portrait 1080x1920) ---------- */
+function skyline(r, baseY, count, color, windowColor, lit) {
+  let s = '', x = -20;
+  for (let i = 0; i < count; i++) {
+    const w = 70 + r() * 110, h = 260 + r() * 620, y = baseY - h;
+    s += `<rect x="${x.toFixed(0)}" y="${y.toFixed(0)}" width="${w.toFixed(0)}" height="${h.toFixed(0)}" fill="${color}"/>`;
+    if (windowColor) for (let wy = y + 24; wy < baseY - 20; wy += 34) for (let wx = x + 12; wx < x + w - 14; wx += 22)
+      if (r() < lit) s += `<rect x="${wx.toFixed(0)}" y="${wy.toFixed(0)}" width="10" height="16" fill="${windowColor}" opacity="${(0.55 + r() * 0.45).toFixed(2)}"/>`;
+    x += w + 6 + r() * 14;
+    if (x > 1100) break;
+  }
+  return s;
+}
+const BGS = [
+  { id: 'sunset', name: 'Hoàng hôn', svg: () => { const r = rng(7); return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b2a63"/><stop offset=".45" stop-color="#c8577a"/><stop offset=".72" stop-color="#ff9a5c"/><stop offset="1" stop-color="#ffd27a"/></linearGradient><radialGradient id="g"><stop offset="0" stop-color="#fff3c4"/><stop offset=".4" stop-color="#ffd27a" stop-opacity=".8"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient></defs><rect width="1080" height="1920" fill="url(#s)"/><circle cx="700" cy="1180" r="320" fill="url(#g)"/><circle cx="700" cy="1180" r="95" fill="#fff1c9"/>${skyline(r, 1480, 14, '#3a2346', null, 0)}${skyline(r, 1560, 16, '#24162f', '#ffcf7a', .12)}<rect y="1520" width="1080" height="400" fill="#1a1422"/><rect y="1460" width="1080" height="260" fill="#cfe6ff" opacity=".12"/><rect y="1452" width="1080" height="14" fill="#e9eef5" opacity=".85"/>${[0, 1, 2, 3, 4, 5].map(i => `<rect x="${i * 216}" y="1452" width="8" height="268" fill="#e9eef5" opacity=".6"/>`).join('')}</svg>`; } },
+  { id: 'living', name: 'Phòng khách', svg: () => { const r = rng(3); return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#efe6da"/><stop offset="1" stop-color="#e2d5c4"/></linearGradient><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a27650"/><stop offset="1" stop-color="#6e4a2f"/></linearGradient><linearGradient id="sk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ec5ff"/><stop offset="1" stop-color="#dff0ff"/></linearGradient></defs><rect width="1080" height="1920" fill="url(#w)"/><rect x="120" y="260" width="840" height="900" rx="6" fill="url(#sk)"/>${skyline(r, 1160, 12, '#9fb6cc', null, 0)}<rect x="120" y="260" width="840" height="900" fill="none" stroke="#2f2a26" stroke-width="22"/><rect x="530" y="260" width="20" height="900" fill="#2f2a26"/><rect x="0" y="1380" width="1080" height="540" fill="url(#f)"/>${[0, 1, 2, 3, 4, 5, 6].map(i => `<line x1="${i * 170 - 60}" y1="1380" x2="${i * 260 - 300}" y2="1920" stroke="#5a3b25" stroke-width="3" opacity=".5"/>`).join('')}<rect x="0" y="1370" width="1080" height="14" fill="#d8cab6"/><rect x="150" y="1250" width="780" height="200" rx="34" fill="#53627a"/><rect x="150" y="1150" width="780" height="150" rx="40" fill="#5d6d86"/><rect x="110" y="1220" width="90" height="230" rx="30" fill="#4a586e"/><rect x="880" y="1220" width="90" height="230" rx="30" fill="#4a586e"/><rect x="250" y="1190" width="160" height="110" rx="24" fill="#d9b48a"/><rect x="670" y="1190" width="160" height="110" rx="24" fill="#c87f5d"/><rect x="40" y="700" width="10" height="680" fill="#2a2a2a"/><path d="M-10 640h110l-30 120h-50z" fill="#f6e7c8"/><ellipse cx="45" cy="760" rx="70" ry="16" fill="#fff4d6" opacity=".7"/><rect x="960" y="1240" width="90" height="140" rx="10" fill="#d9cdbb"/><circle cx="1005" cy="1170" r="80" fill="#4f8a3c"/><circle cx="960" cy="1110" r="55" fill="#5e9a48"/><circle cx="1050" cy="1090" r="50" fill="#447a34"/></svg>`; } },
+  { id: 'night', name: 'Đêm thành phố', svg: () => { const r = rng(11); return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="n" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#050816"/><stop offset=".6" stop-color="#14204a"/><stop offset="1" stop-color="#3b2a6b"/></linearGradient></defs><rect width="1080" height="1920" fill="url(#n)"/>${Array.from({ length: 70 }, () => `<circle cx="${(r() * 1080).toFixed(0)}" cy="${(r() * 900).toFixed(0)}" r="${(1 + r() * 2.2).toFixed(1)}" fill="#fff" opacity="${(.3 + r() * .7).toFixed(2)}"/>`).join('')}<circle cx="820" cy="360" r="70" fill="#f4f1e6"/><circle cx="845" cy="345" r="62" fill="#0b1230"/>${skyline(r, 1500, 14, '#1b2550', '#7fb2ff', .18)}${skyline(r, 1620, 16, '#0d1430', '#ffd479', .3)}<rect y="1600" width="1080" height="320" fill="#090d22"/><rect y="1580" width="1080" height="12" fill="#c9d4ff" opacity=".5"/></svg>`; } },
+  { id: 'lobby', name: 'Sảnh dự án', svg: () => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1a17"/><stop offset=".55" stop-color="#3b3129"/><stop offset="1" stop-color="#d9cfc2"/></linearGradient><linearGradient id="m" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4efe8"/><stop offset=".5" stop-color="#d8d0c5"/><stop offset="1" stop-color="#efe9e1"/></linearGradient><radialGradient id="c"><stop offset="0" stop-color="#ffe6b0"/><stop offset="1" stop-color="#ffe6b0" stop-opacity="0"/></radialGradient></defs><rect width="1080" height="1920" fill="url(#l)"/><rect y="1380" width="1080" height="540" fill="url(#m)"/>${[0, 1, 2, 3].map(i => `<rect x="${60 + i * 300}" y="300" width="70" height="1080" fill="#c9b79f" opacity=".85"/>`).join('')}<circle cx="540" cy="260" r="260" fill="url(#c)"/><circle cx="540" cy="250" r="60" fill="#ffefc7"/><text x="540" y="760" text-anchor="middle" font-family="Georgia,serif" font-size="110" letter-spacing="18" fill="#e8d4a8">PHÒNG AR</text><text x="540" y="840" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="34" letter-spacing="12" fill="#cbb994">THE RESIDENCE</text><rect x="370" y="880" width="340" height="3" fill="#cbb994"/></svg>` },
+];
+for (const b of BGS) { const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(b.svg()); b.url = url; b.img = new Image(); b.img.src = url; }
+
+/* ---------- state ---------- */
+const state = {
+  project: 'Phòng AR',
+  bg: { type: 'image', img: BGS[0].img, id: 'sunset' },
+  facing: 'user',
+  source: 'camera',          // 'camera' | 'photo'
+  photo: null,               // HTMLImageElement in photo mode
+  stream: null,
+  busy: false,
+};
+const out = $('#out'), octx = out.getContext('2d');
+const person = document.createElement('canvas'), pctx = person.getContext('2d');
+const maskCanvas = document.createElement('canvas'), mctx = maskCanvas.getContext('2d', { willReadFrequently: true });
+const small = document.createElement('canvas'), sctx = small.getContext('2d');
+let maskReady = false, prevMask = null;
+const polarity = { decided: false, invert: false, votes: 0, samples: 0 };
+
+/* ---------- segmentation (MediaPipe) ---------- */
+let vision = null, segVideo = null, segImage = null, segLoading = null;
+async function makeSeg(mode, delegate) {
+  return ImageSegmenter.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: MODEL, delegate },
+    runningMode: mode, outputConfidenceMasks: true, outputCategoryMask: false,
+  });
+}
+function loadSegmenters() {
+  if (segLoading) return segLoading;
+  $('#loading').style.display = 'block';
+  segLoading = (async () => {
+    vision = await FilesetResolver.forVisionTasks(WASM);
+    const delegate = isIOS ? 'CPU' : 'GPU';   // iOS Safari GPU path has known mask bugs; the model is tiny so CPU is fine
+    try { segVideo = await makeSeg('VIDEO', delegate); segImage = await makeSeg('IMAGE', delegate); }
+    catch (e) { segVideo = await makeSeg('VIDEO', 'CPU'); segImage = await makeSeg('IMAGE', 'CPU'); }
+  })().catch(err => { console.error(err); toast('Không tải được bộ tách nền. Kiểm tra mạng rồi thử lại.', 4000); segLoading = null; throw err; })
+    .finally(() => { $('#loading').style.display = 'none'; });
+  return segLoading;
+}
+
+// Pick the "person" channel; if the model gives a single channel, learn its polarity from where the subject usually is.
+function personMask(masks) { return masks.length > 1 ? masks[masks.length - 1] : masks[0]; }
+function centreMinusBorder(arr, w, h) {
+  let c = 0, cn = 0, b = 0, bn = 0;
+  for (let y = 0; y < h; y += 4) for (let x = 0; x < w; x += 4) {
+    const v = arr[y * w + x];
+    if (x > w * 0.35 && x < w * 0.65 && y > h * 0.35) { c += v; cn++; }
+    else if (y < h * 0.12 && (x < w * 0.15 || x > w * 0.85)) { b += v; bn++; }
+  }
+  return (c / Math.max(cn, 1)) - (b / Math.max(bn, 1));
+}
+function writeMask(maskObj, temporal) {
+  const w = maskObj.width, h = maskObj.height, arr = maskObj.getAsFloat32Array();
+  if (!polarity.decided) {
+    const d = centreMinusBorder(arr, w, h);
+    if (Math.abs(d) > 0.25) { polarity.samples++; if (d < 0) polarity.votes++; }
+    if (polarity.samples >= (temporal ? 8 : 1)) { polarity.invert = polarity.votes > polarity.samples / 2; polarity.decided = true; }
+  }
+  if (maskCanvas.width !== w || maskCanvas.height !== h) { maskCanvas.width = w; maskCanvas.height = h; prevMask = null; }
+  if (!prevMask || prevMask.length !== arr.length) prevMask = new Float32Array(arr.length);
+  const img = mctx.createImageData(w, h), d = img.data, inv = polarity.invert;
+  for (let i = 0; i < arr.length; i++) {
+    let v = inv ? 1 - arr[i] : arr[i];
+    if (temporal) v = prevMask[i] * 0.45 + v * 0.55;
+    prevMask[i] = v;
+    let a = (v - 0.35) / 0.4; a = a < 0 ? 0 : a > 1 ? 1 : a;
+    a = a * a * (3 - 2 * a);                       // smoothstep for soft edges
+    d[i * 4 + 3] = a * 255;
+  }
+  mctx.putImageData(img, 0, 0);
+  maskReady = true;
+}
+
+/* ---------- compositing ---------- */
+function drawCover(ctx, img, W, H) {
+  const iw = img.naturalWidth || img.videoWidth || img.width, ih = img.naturalHeight || img.videoHeight || img.height;
+  if (!iw || !ih) return;
+  const s = Math.max(W / iw, H / ih), dw = iw * s, dh = ih * s;
+  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+}
+function drawFill(ctx, el, W, H, mirror) {
+  ctx.save(); if (mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(el, 0, 0, W, H); ctx.restore();
+}
+function blurredSource(el, W, H, mirror) {              // cheap, Safari-safe blur: downscale then upscale
+  const sw = Math.max(16, Math.round(W / 24)), sh = Math.max(16, Math.round(H / 24));
+  if (small.width !== sw || small.height !== sh) { small.width = sw; small.height = sh; }
+  sctx.imageSmoothingQuality = 'high';
+  drawFill(sctx, el, sw, sh, mirror);
+  return small;
+}
+function compose(ctx, W, H, src, mirror) {
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  if (state.bg.type === 'none' || !maskReady) { drawFill(ctx, src, W, H, mirror); return; }
+  if (state.bg.type === 'blur') ctx.drawImage(blurredSource(src, W, H, mirror), 0, 0, W, H);
+  else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); drawCover(ctx, state.bg.img, W, H); }
+  if (person.width !== W || person.height !== H) { person.width = W; person.height = H; }
+  pctx.globalCompositeOperation = 'source-over'; pctx.clearRect(0, 0, W, H);
+  drawFill(pctx, src, W, H, mirror);
+  pctx.globalCompositeOperation = 'destination-in';
+  pctx.imageSmoothingEnabled = true; pctx.imageSmoothingQuality = 'high';
+  drawFill(pctx, maskCanvas, W, H, mirror);
+  pctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(person, 0, 0);
+}
+function sourceSize() {
+  if (state.source === 'photo' && state.photo) return [state.photo.naturalWidth, state.photo.naturalHeight];
+  const v = $('#camVideo'); return [v.videoWidth, v.videoHeight];
+}
+function fitSize(w, h, max) { const s = Math.min(1, max / Math.max(w, h)); return [Math.round(w * s), Math.round(h * s)]; }
+
+/* ---------- render loop ---------- */
+let lastTs = 0, rafId = 0;
+function loop() {
+  rafId = requestAnimationFrame(loop);
+  if (state.source === 'camera') {
+    const v = $('#camVideo');
+    if (v.readyState < 2 || !v.videoWidth) return;
+    const [W, H] = fitSize(v.videoWidth, v.videoHeight, 1280);
+    if (out.width !== W || out.height !== H) { out.width = W; out.height = H; }
+    if (segVideo) {
+      let ts = performance.now(); if (ts <= lastTs) ts = lastTs + 1; lastTs = ts;
+      try { segVideo.segmentForVideo(v, ts, (res) => { const m = personMask(res.confidenceMasks || []); if (m) writeMask(m, true); }); }
+      catch (e) { console.warn(e); }
+    }
+    compose(octx, W, H, v, state.facing === 'user');
+  } else if (state.photo) {
+    const [W, H] = fitSize(state.photo.naturalWidth, state.photo.naturalHeight, 1600);
+    if (out.width !== W || out.height !== H) { out.width = W; out.height = H; }
+    compose(octx, W, H, state.photo, false);
+  }
+}
+
+/* ---------- camera ---------- */
+function stopStream() { state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; }
+async function openCamera(videoEl, facing) {
+  stopStream();
+  if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) throw new Error('no-camera');
+  state.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 1280 } } });
+  videoEl.srcObject = state.stream;
+  try { await videoEl.play(); } catch {}
+}
+
+/* ---------- QR scanning ---------- */
+let scanning = false;
+const qrCanvas = document.createElement('canvas'), qctx = qrCanvas.getContext('2d', { willReadFrequently: true });
+const native = ('BarcodeDetector' in window) ? (() => { try { return new BarcodeDetector({ formats: ['qr_code'] }); } catch { return null; } })() : null;
+async function detectQR(video) {
+  if (native) { try { const r = await native.detect(video); if (r.length) return r[0].rawValue; } catch {} }
+  const vw = video.videoWidth, vh = video.videoHeight; if (!vw) return null;
+  const s = Math.min(1, 640 / Math.max(vw, vh)), w = Math.round(vw * s), h = Math.round(vh * s);
+  qrCanvas.width = w; qrCanvas.height = h; qctx.drawImage(video, 0, 0, w, h);
+  const code = window.jsQR?.(qctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
+  return code?.data || null;
+}
+async function startScan() {
+  show('scan');
+  const v = $('#scanVideo');
+  try { await openCamera(v, 'environment'); }
+  catch (e) { toast('Không mở được camera. Hãy mở bằng Safari/Chrome và cho phép camera.', 4000); show('start'); return; }
+  loadSegmenters().catch(() => {});               // warm up while scanning
+  scanning = true;
+  while (scanning) {
+    const text = await detectQR(v);
+    if (text && scanning) { scanning = false; haptic(); onQR(text); return; }
+    await sleep(140);
+  }
+}
+function onQR(text) {
+  // Format: phongar:<background-id>[:<Tên dự án>]  — any other QR still unlocks the booth.
+  const m = /^phongar:([a-z]+)(?::(.+))?$/i.exec(text.trim());
+  if (m) {
+    const b = BGS.find(x => x.id === m[1].toLowerCase());
+    if (b) state.bg = { type: 'image', img: b.img, id: b.id };
+    if (m[2]) state.project = decodeURIComponent(m[2]);
+    toast(`Đã mở bộ nền: ${b ? b.name : 'mặc định'}`);
+  } else {
+    toast(`Đã quét: ${text.length > 40 ? text.slice(0, 40) + '…' : text}`);
+  }
+  startBooth();
+}
+
+/* ---------- booth ---------- */
+function renderThumbs() {
+  const row = $('#thumbs'); row.innerHTML = '';
+  const add = (id, label, style, inner, onClick) => {
+    const b = document.createElement('button'); b.className = 'thumb' + (state.bg.id === id ? ' on' : '');
+    b.innerHTML = `<span class="sw" style="${style}">${inner || ''}</span>${label}`;
+    b.onclick = () => { onClick(); renderThumbs(); };
+    row.appendChild(b);
+  };
+  for (const bg of BGS) add(bg.id, bg.name, `background-image:url("${bg.url}")`, '', () => { state.bg = { type: 'image', img: bg.img, id: bg.id }; });
+  add('blur', 'Mờ nền', 'background:linear-gradient(135deg,#556,#99a)', '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" stroke-dasharray="2 3"/></svg>', () => { state.bg = { type: 'blur', id: 'blur' }; });
+  add('none', 'Ảnh gốc', 'background:#333', '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M6 18 18 6"/></svg>', () => { state.bg = { type: 'none', id: 'none' }; });
+  add('custom', 'Nền của bạn', state.bg.id === 'custom' ? `background-image:url("${state.bg.img.src}")` : 'background:#2a3240', state.bg.id === 'custom' ? '' : '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>', () => $('#bgInput').click());
+}
+async function startBooth() {
+  show('booth'); $('#project').textContent = state.project; renderThumbs();
+  scanning = false; stopStream();
+  loadSegmenters().catch(() => {});
+  if (state.source === 'camera') {
+    try { await openCamera($('#camVideo'), state.facing); }
+    catch (e) { toast('Không mở được camera — hãy chọn ảnh có sẵn.', 3500); }
+  }
+  cancelAnimationFrame(rafId); loop();
+}
+async function usePhoto(file) {
+  const img = new Image(); img.src = URL.createObjectURL(file);
+  try { await img.decode(); } catch { toast('Không đọc được ảnh này'); return; }
+  await setPhoto(img);
+}
+async function setPhoto(img) {
+  stopStream(); state.source = 'photo'; state.photo = img; maskReady = false; prevMask = null;
+  polarity.decided = false; polarity.votes = 0; polarity.samples = 0;
+  if (!$('#booth').classList.contains('on')) { show('booth'); $('#project').textContent = state.project; renderThumbs(); cancelAnimationFrame(rafId); loop(); }
+  try { await loadSegmenters(); } catch { return; }
+  segImage.segment(img, (res) => { const m = personMask(res.confidenceMasks || []); if (m) writeMask(m, false); });
+  if (!maskReady) toast('Không tìm thấy người trong ảnh');
+}
+
+/* ---------- capture ---------- */
+function stamp(ctx, W, H) {
+  const bar = Math.round(H * 0.075), g = ctx.createLinearGradient(0, H - bar * 1.8, 0, H);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
+  ctx.fillStyle = g; ctx.fillRect(0, H - bar * 1.8, W, bar * 1.8);
+  const fs = Math.max(14, Math.round(W * 0.036));
+  ctx.fillStyle = '#fff'; ctx.font = `600 ${fs}px system-ui,-apple-system,sans-serif`; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(state.project, Math.round(W * 0.05), H - Math.round(bar * 0.55));
+  ctx.font = `${Math.round(fs * 0.7)}px system-ui,-apple-system,sans-serif`; ctx.fillStyle = 'rgba(255,255,255,.8)';
+  const d = new Date(), txt = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()} · Ảnh minh hoạ`;
+  ctx.textAlign = 'right'; ctx.fillText(txt, W - Math.round(W * 0.05), H - Math.round(bar * 0.55)); ctx.textAlign = 'left';
+}
+let lastBlob = null;
+async function capture() {
+  if (state.busy) return;
+  const [sw, sh] = sourceSize(); if (!sw) { toast('Camera chưa sẵn sàng'); return; }
+  state.busy = true;
+  if (state.source === 'camera' && state.facing === 'user') {      // selfie: 3-2-1
+    const c = $('#count'); c.style.display = 'grid';
+    for (const n of [3, 2, 1]) { c.textContent = n; await sleep(700); }
+    c.style.display = 'none';
+  }
+  const f = $('#flash'); f.style.transition = 'none'; f.style.opacity = '1'; requestAnimationFrame(() => { f.style.transition = 'opacity .35s'; f.style.opacity = '0'; });
+  haptic();
+  const W = out.width, H = out.height;
+  const cap = document.createElement('canvas'); cap.width = W; cap.height = H;
+  const cctx = cap.getContext('2d');
+  cctx.drawImage(out, 0, 0);                         // the frame the user just saw
+  stamp(cctx, W, H);
+  lastBlob = await new Promise(r => cap.toBlob(r, 'image/jpeg', 0.92));
+  const url = URL.createObjectURL(lastBlob);
+  $('#shot').src = url; $('#save').href = url;
+  stopStream(); cancelAnimationFrame(rafId);
+  show('result'); state.busy = false;
+}
+
+/* ---------- wiring ---------- */
+$('#go-scan').onclick = () => { state.source = 'camera'; startScan(); };
+$('#go-booth').onclick = () => { state.source = 'camera'; startBooth(); };
+$('#go-photo').onclick = () => $('#photoInput').click();
+$('#skip-scan').onclick = () => { scanning = false; startBooth(); };
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => { scanning = false; stopStream(); cancelAnimationFrame(rafId); show('start'); });
+$('#flip').onclick = async () => {
+  if (state.source !== 'camera') { state.source = 'camera'; state.photo = null; }
+  state.facing = state.facing === 'user' ? 'environment' : 'user'; prevMask = null;
+  try { await openCamera($('#camVideo'), state.facing); } catch { toast('Không đổi được camera'); }
+};
+$('#pick-photo').onclick = () => $('#photoInput').click();
+$('#photoInput').onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) usePhoto(f); };
+$('#bgInput').onchange = async (e) => {
+  const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+  const img = new Image(); img.src = URL.createObjectURL(f);
+  try { await img.decode(); state.bg = { type: 'image', img, id: 'custom' }; renderThumbs(); } catch { toast('Không đọc được ảnh nền'); }
+};
+$('#shutter').onclick = capture;
+$('#again').onclick = () => { if (state.source === 'photo') { show('booth'); cancelAnimationFrame(rafId); loop(); } else startBooth(); };
+$('#share').onclick = async () => {
+  if (!lastBlob) return;
+  const file = new File([lastBlob], 'anh-du-an.jpg', { type: 'image/jpeg' });
+  if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: state.project }); } catch {} }
+  else toast('Máy này chưa hỗ trợ chia sẻ — hãy dùng "Lưu ảnh"');
+};
+
+// test hook: load a portrait by URL (must allow CORS)
+window.__booth = {
+  state, polarity,
+  async photoFromURL(url) { const img = new Image(); img.crossOrigin = 'anonymous'; img.src = url; await img.decode(); await setPhoto(img); return { maskReady, invert: polarity.invert, mask: [maskCanvas.width, maskCanvas.height] }; },
+  setBg(id) { const b = BGS.find(x => x.id === id); state.bg = b ? { type: 'image', img: b.img, id } : { type: id, id }; renderThumbs(); },
+};
+</script>
+</body>
+</html>
